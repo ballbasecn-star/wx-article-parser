@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信文章解析器 - WeChat Article Parser</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=DM+Mono:wght@400;500&family=Bricolage+Grotesque:wght@400;500;700;900&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #141416;
+            --bg-card: #1a1a1d;
+            --text-primary: #fafafa;
+            --text-secondary: #8a8a8d;
+            --text-muted: #5a5a5d;
+            --accent: #07c160;
+            --accent-dim: rgba(7, 193, 96, 0.15);
+            --accent-glow: rgba(7, 193, 96, 0.4);
+            --border: rgba(255, 255, 255, 0.08);
+            --gradient-mesh: radial-gradient(ellipse at 20% 0%, rgba(7, 193, 96, 0.08) 0%, transparent 50%),
+                             radial-gradient(ellipse at 80% 100%, rgba(26, 173, 25, 0.06) 0%, transparent 50%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--gradient-mesh);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Noise texture overlay */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .container {
+            position: relative;
+            z-index: 2;
+            max-width: 100%;
+        }
+
+        /* ═══════════════════════════════════════════
+           HEADER / SEARCH
+           ═══════════════════════════════════════════ */
+        .search-section {
+            padding: 60px 40px;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .search-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+
+        .brand {
+            position: relative;
+        }
+
+        .brand-label {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-label::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .brand-title {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(40px, 6vw, 64px);
+            font-weight: 900;
+            line-height: 1;
+            letter-spacing: -0.03em;
+        }
+
+        .brand-title span {
+            color: var(--accent);
+            font-style: italic;
+        }
+
+        .brand-subtitle {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-top: 16px;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .search-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 24px 28px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0;
+            font-family: 'DM Mono', monospace;
+            font-size: 14px;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent), 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .search-btn {
+            padding: 20px 40px;
+            background: var(--accent);
+            color: var(--bg-primary);
+            border: none;
+            font-family: 'Bricolage Grotesque', 'Noto Serif SC', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .search-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px var(--accent-glow);
+        }
+
+        .search-btn:hover::before {
+            left: 100%;
+        }
+
+        .search-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ═══════════════════════════════════════════
+           ARTICLE LAYOUT
+           ═══════════════════════════════════════════ */
+        .article-layout {
+            display: grid;
+            grid-template-columns: 1fr;
+            animation: fadeIn 0.8s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Cover Section */
+        .cover-section {
+            position: relative;
+            height: 70vh;
+            min-height: 500px;
+            overflow: hidden;
+        }
+
+        .cover-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: grayscale(30%) contrast(1.1);
+            transition: filter 0.5s ease;
+        }
+
+        .cover-section:hover .cover-image {
+            filter: grayscale(0%) contrast(1);
+        }
+
+        .cover-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                to top,
+                var(--bg-primary) 0%,
+                rgba(10, 10, 11, 0.6) 40%,
+                transparent 100%
+            );
+        }
+
+        .cover-content {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 60px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: end;
+        }
+
+        /* Author */
+        .author-block {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .author-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 2px solid var(--accent);
+            background: var(--bg-card);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: var(--accent);
+        }
+
+        .author-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .author-name {
+            font-family: 'Bricolage Grotesque', 'Noto Serif SC', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .author-handle {
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .post-meta {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-top: 8px;
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: flex;
+            gap: 40px;
+            justify-content: flex-end;
+        }
+
+        .stat-item {
+            text-align: right;
+            opacity: 0;
+            animation: slideUp 0.6s ease forwards;
+        }
+
+        .stat-item:nth-child(1) { animation-delay: 0.1s; }
+        .stat-item:nth-child(2) { animation-delay: 0.2s; }
+        .stat-item:nth-child(3) { animation-delay: 0.3s; }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .stat-value {
+            font-family: 'Bricolage Grotesque', sans-serif;
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-family: 'DM Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-top: 4px;
+        }
+
+        /* Title Section */
+        .title-section {
+            padding: 80px 60px;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+
+        .title-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 1px;
+            height: 60px;
+            background: linear-gradient(to bottom, var(--accent), transparent);
+        }
+
+        .article-title {
+            font-family: 'Noto Serif SC', 'Playfair Display', serif;
+            font-size: clamp(28px, 4vw, 48px);
+            font-weight: 700;
+            line-height: 1.3;
+            letter-spacing: -0.02em;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        /* Content Section */
+        .content-section {
+            padding: 80px 60px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .article-content {
+            font-size: 18px;
+            line-height: 1.85;
+            color: var(--text-primary);
+        }
+
+        .article-content,
+        .article-content * {
+            max-width: 100%;
+        }
+
+        .article-content p {
+            margin-bottom: 1.5em;
+        }
+
+        .article-content h1,
+        .article-content h2,
+        .article-content h3 {
+            font-family: 'Noto Serif SC', serif;
+            margin-top: 2em;
+            margin-bottom: 1em;
+            color: var(--text-primary);
+        }
+
+        .article-content h2 {
+            font-size: 24px;
+            font-weight: 700;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .article-content h2::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0.2em;
+            bottom: 0.2em;
+            width: 3px;
+            background: var(--accent);
+        }
+
+        .article-content a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s ease;
+        }
+
+        .article-content a:hover {
+            border-bottom-color: var(--accent);
+        }
+
+        .article-content blockquote {
+            border-left: 3px solid var(--accent);
+            padding-left: 24px;
+            margin: 2em 0;
+            font-style: italic;
+            color: var(--text-secondary);
+        }
+
+        /* Article content images */
+        .article-content img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin: 1.5em auto;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .article-content img:hover {
+            border-color: var(--accent);
+            transform: scale(1.01);
+        }
+
+        /* Section styling */
+        .article-content section {
+            margin: 2em 0;
+        }
+
+        /* Article Images */
+        .article-image {
+            width: 100%;
+            height: auto;
+            margin: 2em 0;
+            border: 1px solid var(--border);
+            transition: all 0.4s ease;
+            cursor: pointer;
+        }
+
+        .article-image:hover {
+            transform: scale(1.02);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            border-color: var(--accent);
+        }
+
+        /* Images Gallery */
+        .images-section {
+            padding: 60px;
+            border-top: 1px solid var(--border);
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .images-title {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+
+        .images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .images-grid img {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .images-grid img:hover {
+            border-color: var(--accent);
+            transform: scale(1.02);
+        }
+
+        /* Footer */
+        .footer-section {
+            padding: 40px 60px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .original-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            padding: 16px 24px;
+            border: 1px solid var(--border);
+            background: transparent;
+        }
+
+        .original-link:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .original-link svg {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s ease;
+        }
+
+        .original-link:hover svg {
+            transform: translateX(4px);
+        }
+
+        .credits {
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Error State */
+        .error-section {
+            padding: 120px 60px;
+            text-align: center;
+        }
+
+        .error-icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+            opacity: 0.3;
+        }
+
+        .error-title {
+            font-family: 'Noto Serif SC', 'Playfair Display', serif;
+            font-size: 32px;
+            margin-bottom: 12px;
+        }
+
+        .error-message {
+            color: var(--text-secondary);
+            font-size: 16px;
+        }
+
+        /* Loading State */
+        .loading-section {
+            padding: 120px 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            color: var(--text-muted);
+            letter-spacing: 0.1em;
+        }
+
+        /* Info Bar */
+        .info-bar {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .info-item svg {
+            width: 14px;
+            height: 14px;
+            opacity: 0.6;
+        }
+
+        /* ═══════════════════════════════════════════
+           RESPONSIVE
+           ═══════════════════════════════════════════ */
+        @media (max-width: 900px) {
+            .search-inner {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .brand-title {
+                font-size: 40px;
+            }
+
+            .cover-section {
+                height: 50vh;
+            }
+
+            .cover-content {
+                grid-template-columns: 1fr;
+                gap: 30px;
+                padding: 30px;
+            }
+
+            .stats-bar {
+                justify-content: flex-start;
+                flex-wrap: wrap;
+                gap: 24px;
+            }
+
+            .stat-item {
+                text-align: left;
+            }
+
+            .title-section,
+            .content-section,
+            .footer-section {
+                padding-left: 30px;
+                padding-right: 30px;
+            }
+
+            .article-title {
+                font-size: 28px;
+            }
+
+            .images-section {
+                padding: 40px 30px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .search-section {
+                padding: 40px 20px;
+            }
+
+            .brand-title {
+                font-size: 32px;
+            }
+
+            .stats-bar {
+                gap: 20px;
+            }
+
+            .stat-value {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Search Section -->
+        <header class="search-section">
+            <div class="search-inner">
+                <div class="brand">
+                    <div class="brand-label">
+                        <span>WeChat Article Parser</span>
+                    </div>
+                    <h1 class="brand-title">解析<span>微信</span>文章</h1>
+                    <p class="brand-subtitle">输入公众号文章链接，提取文章内容与图片</p>
+                </div>
+                <div class="search-box">
+                    <form class="search-form" id="parseForm">
+                        <div class="search-input-wrapper">
+                            <input
+                                type="url"
+                                id="urlInput"
+                                class="search-input"
+                                placeholder="https://mp.weixin.qq.com/s/..."
+                                required
+                            >
+                        </div>
+                        <button type="submit" class="search-btn" id="parseBtn">
+                            解析文章
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div class="loading-section" id="loadingSection" style="display: none;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">正在解析文章...</div>
+        </div>
+
+        <!-- Error State -->
+        <div class="error-section" id="errorSection" style="display: none;">
+            <div class="error-icon">✕</div>
+            <h2 class="error-title">解析失败</h2>
+            <p class="error-message" id="errorMessage"></p>
+        </div>
+
+        <!-- Article Content -->
+        <article class="article-layout" id="articleLayout" style="display: none;">
+            <!-- Cover Image -->
+            <section class="cover-section" id="coverSection" style="display: none;">
+                <img id="coverImage" src="" alt="" class="cover-image" referrerpolicy="no-referrer">
+                <div class="cover-overlay"></div>
+                <div class="cover-content">
+                    <div class="author-block">
+                        <div class="author-avatar" id="authorAvatar">文</div>
+                        <div class="author-info">
+                            <div class="author-name" id="authorName">公众号名称</div>
+                            <div class="author-handle" id="authorHandle">作者</div>
+                            <div class="post-meta" id="postMeta"></div>
+                        </div>
+                    </div>
+                    <div class="stats-bar">
+                        <div class="stat-item">
+                            <div class="stat-value" id="imageCount">0</div>
+                            <div class="stat-label">图片</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="contentLength">0</div>
+                            <div class="stat-label">字数</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="parseTime">0s</div>
+                            <div class="stat-label">耗时</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- No Cover Section -->
+            <section class="cover-section" id="noCoverSection" style="display: none; height: auto; min-height: auto; padding: 60px; background: var(--bg-secondary);">
+                <div class="cover-content" style="position: relative;">
+                    <div class="author-block">
+                        <div class="author-avatar" id="authorAvatar2">文</div>
+                        <div class="author-info">
+                            <div class="author-name" id="authorName2">公众号名称</div>
+                            <div class="author-handle" id="authorHandle2">作者</div>
+                            <div class="post-meta" id="postMeta2"></div>
+                        </div>
+                    </div>
+                    <div class="stats-bar">
+                        <div class="stat-item">
+                            <div class="stat-value" id="imageCount2">0</div>
+                            <div class="stat-label">图片</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="contentLength2">0</div>
+                            <div class="stat-label">字数</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="parseTime2">0s</div>
+                            <div class="stat-label">耗时</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Title -->
+            <section class="title-section" id="titleSection" style="display: none;">
+                <h1 class="article-title" id="articleTitle"></h1>
+            </section>
+
+            <!-- Content -->
+            <section class="content-section" id="contentSection" style="display: none;">
+                <div class="article-content" id="articleContent"></div>
+            </section>
+
+            <!-- Images Gallery -->
+            <section class="images-section" id="imagesSection" style="display: none;">
+                <div class="images-title">文章图片</div>
+                <div class="images-grid" id="imagesGrid"></div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer-section" id="footerSection" style="display: none;">
+                <a href="#" target="_blank" class="original-link" id="originalLink">
+                    <span>查看原文</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </a>
+                <div class="credits">
+                    解析于 <span id="parsedAt"></span> · 微信文章解析器
+                </div>
+            </footer>
+        </article>
+    </div>
+
+    <script>
+        const form = document.getElementById('parseForm');
+        const urlInput = document.getElementById('urlInput');
+        const parseBtn = document.getElementById('parseBtn');
+
+        const loadingSection = document.getElementById('loadingSection');
+        const errorSection = document.getElementById('errorSection');
+        const errorMessage = document.getElementById('errorMessage');
+        const articleLayout = document.getElementById('articleLayout');
+
+        // Hide all result sections
+        function hideAllResults() {
+            loadingSection.style.display = 'none';
+            errorSection.style.display = 'none';
+            articleLayout.style.display = 'none';
+        }
+
+        // Show loading
+        function showLoading() {
+            hideAllResults();
+            loadingSection.style.display = 'flex';
+        }
+
+        // Show error
+        function showError(message) {
+            hideAllResults();
+            errorMessage.textContent = message;
+            errorSection.style.display = 'block';
+        }
+
+        // Show article
+        function showArticle(data) {
+            hideAllResults();
+            articleLayout.style.display = 'grid';
+
+            const hasCover = data.media && data.media.cover_image;
+
+            // Cover section
+            if (hasCover) {
+                document.getElementById('coverSection').style.display = 'block';
+                document.getElementById('noCoverSection').style.display = 'none';
+                const coverImage = document.getElementById('coverImage');
+                coverImage.src = normalizeImageUrl(data.media.cover_image);
+                coverImage.setAttribute('referrerpolicy', 'no-referrer');
+            } else {
+                document.getElementById('coverSection').style.display = 'none';
+                document.getElementById('noCoverSection').style.display = 'block';
+            }
+
+            // Author info
+            const avatar = hasCover ? 'authorAvatar' : 'authorAvatar2';
+            const name = hasCover ? 'authorName' : 'authorName2';
+            const handle = hasCover ? 'authorHandle' : 'authorHandle2';
+            const meta = hasCover ? 'postMeta' : 'postMeta2';
+
+            document.getElementById(name).textContent = data.metadata.account_name || '未知公众号';
+            document.getElementById(handle).textContent = data.metadata.author ? `作者: ${data.metadata.author}` : '';
+            document.getElementById(meta).textContent = data.metadata.publish_date || '';
+
+            // Stats
+            const imageCount = hasCover ? 'imageCount' : 'imageCount2';
+            const contentLength = hasCover ? 'contentLength' : 'contentLength2';
+            const parseTime = hasCover ? 'parseTime' : 'parseTime2';
+
+            document.getElementById(imageCount).textContent = data.media.images ? data.media.images.length : 0;
+            document.getElementById(contentLength).textContent = data.content ? data.content.length : 0;
+            document.getElementById(parseTime).textContent = data.processing_time ? `${data.processing_time}s` : '0s';
+
+            // Title
+            if (data.title) {
+                document.getElementById('titleSection').style.display = 'flex';
+                document.getElementById('articleTitle').textContent = data.title;
+            } else {
+                document.getElementById('titleSection').style.display = 'none';
+            }
+
+            // Content - 优先使用 content_html（保留图片和排版）
+            let inlineImageCount = 0;
+
+            if (data.content_html) {
+                document.getElementById('contentSection').style.display = 'block';
+                document.getElementById('articleContent').innerHTML = data.content_html;
+                sanitizeInlineStyles(document.getElementById('articleContent'));
+                inlineImageCount = enhanceArticleImages(document.getElementById('articleContent'));
+            } else if (data.content) {
+                document.getElementById('contentSection').style.display = 'block';
+                const paragraphs = data.content.split('\n').filter(p => p.trim());
+                const contentHtml = paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('');
+                document.getElementById('articleContent').innerHTML = contentHtml;
+            } else {
+                document.getElementById('contentSection').style.display = 'none';
+            }
+
+            // Images gallery - 如果内容中没有图片，显示图片画廊
+            if (data.media && data.media.images && data.media.images.length > 0) {
+                if (!inlineImageCount) {
+                    document.getElementById('imagesSection').style.display = 'block';
+                    const grid = document.getElementById('imagesGrid');
+                    grid.innerHTML = '';
+
+                    data.media.images.forEach((img) => {
+                        const src = normalizeImageUrl(img);
+                        if (!src) {
+                            return;
+                        }
+
+                        const image = document.createElement('img');
+                        image.src = src;
+                        image.alt = '文章图片';
+                        image.loading = 'lazy';
+                        image.decoding = 'async';
+                        image.referrerPolicy = 'no-referrer';
+                        image.addEventListener('click', () => window.open(src, '_blank'));
+                        grid.appendChild(image);
+                    });
+                } else {
+                    document.getElementById('imagesSection').style.display = 'none';
+                }
+            } else {
+                document.getElementById('imagesSection').style.display = 'none';
+            }
+
+            // Footer
+            document.getElementById('footerSection').style.display = 'flex';
+            document.getElementById('originalLink').href = data.url;
+            document.getElementById('parsedAt').textContent = new Date().toLocaleString('zh-CN');
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function normalizeImageUrl(url) {
+            if (!url) {
+                return '';
+            }
+
+            const normalized = url.trim().replace(/&amp;/g, '&');
+            if (!normalized) {
+                return '';
+            }
+
+            return normalized.startsWith('//') ? `https:${normalized}` : normalized;
+        }
+
+        function prepareInlineImage(img) {
+            const src = normalizeImageUrl(
+                img.getAttribute('data-src') ||
+                img.getAttribute('data-actualsrc') ||
+                img.getAttribute('data-original-src') ||
+                img.getAttribute('data-original') ||
+                img.getAttribute('src')
+            );
+
+            if (!src) {
+                return false;
+            }
+
+            img.src = src;
+            img.setAttribute('src', src);
+            img.setAttribute('referrerpolicy', 'no-referrer');
+            img.setAttribute('loading', img.getAttribute('loading') || 'lazy');
+            img.setAttribute('decoding', img.getAttribute('decoding') || 'async');
+            ['data-src', 'data-actualsrc', 'data-original-src', 'data-original'].forEach((attr) => {
+                img.removeAttribute(attr);
+            });
+
+            if (!img.getAttribute('alt')) {
+                img.setAttribute('alt', '文章图片');
+            }
+
+            img.addEventListener('click', () => window.open(src, '_blank'));
+            return true;
+        }
+
+        function sanitizeInlineStyles(container) {
+            const blocked = new Set([
+                'color',
+                'background',
+                'background-color',
+                'background-image',
+                'background-repeat',
+                'background-position',
+                'background-size',
+                'background-attachment',
+                'background-origin',
+                'background-clip',
+                'opacity',
+                'visibility',
+                'filter',
+                'mix-blend-mode',
+                '-webkit-text-fill-color',
+                '-webkit-background-clip',
+                'display'
+            ]);
+
+            container.querySelectorAll('[style]').forEach((node) => {
+                const safeRules = node
+                    .getAttribute('style')
+                    .split(';')
+                    .map((rule) => rule.trim())
+                    .filter(Boolean)
+                    .filter((rule) => {
+                        const separatorIndex = rule.indexOf(':');
+                        if (separatorIndex === -1) {
+                            return false;
+                        }
+
+                        const propertyName = rule.slice(0, separatorIndex).trim().toLowerCase();
+                        return !blocked.has(propertyName);
+                    });
+
+                if (safeRules.length) {
+                    node.setAttribute('style', safeRules.join('; '));
+                } else {
+                    node.removeAttribute('style');
+                }
+            });
+        }
+
+        function enhanceArticleImages(container) {
+            const images = Array.from(container.querySelectorAll('img'));
+            let visibleImageCount = 0;
+
+            images.forEach((img) => {
+                if (prepareInlineImage(img)) {
+                    visibleImageCount += 1;
+                }
+            });
+
+            return visibleImageCount;
+        }
+
+        // Parse article
+        async function parseArticle(url) {
+            showLoading();
+            parseBtn.disabled = true;
+            parseBtn.textContent = '解析中...';
+
+            try {
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url }),
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showArticle(data);
+                } else {
+                    showError(data.error ? data.error.message : '解析失败，请检查链接是否正确');
+                }
+            } catch (err) {
+                showError('网络错误，请稍后重试');
+            } finally {
+                parseBtn.disabled = false;
+                parseBtn.textContent = '解析文章';
+            }
+        }
+
+        // Form submit
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const url = urlInput.value.trim();
+            if (url) {
+                parseArticle(url);
+            }
+        });
+
+        // Check URL in query params
+        window.addEventListener('DOMContentLoaded', function() {
+            const params = new URLSearchParams(window.location.search);
+            const url = params.get('url');
+            if (url) {
+                urlInput.value = url;
+                parseArticle(url);
+            }
+        });
+    </script>
+</body>
+</html>
