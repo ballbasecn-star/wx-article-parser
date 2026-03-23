@@ -22,6 +22,16 @@ python main.py
 docker-compose up -d
 ```
 
+## 发布脚本
+
+当前仓库已经补齐“本地构建镜像 -> 导出镜像包 -> 上传服务器部署”的三段脚本：
+
+```bash
+./scripts/build-release-image.sh
+./scripts/export-release-bundle.sh
+./scripts/deploy-prebuilt-release.sh
+```
+
 ## 技术栈
 
 - **后端**: Python

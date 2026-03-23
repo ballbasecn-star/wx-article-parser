@@ -1,0 +1,22 @@
+services:
+  wx-article-parser:
+    image: ${WX_ARTICLE_PARSER_IMAGE:-ballbase/wx-article-parser}:${WX_ARTICLE_PARSER_VERSION:-dev}
+    pull_policy: never
+    container_name: wx-article-parser
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${WX_ARTICLE_PARSER_HOST_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - content-shared
+
+networks:
+  content-shared:
+    external: true
