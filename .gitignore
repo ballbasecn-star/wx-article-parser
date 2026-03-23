@@ -17,4 +17,5 @@ build/
 *.log
 .tmp/
 
+deploy/.env.prod
 deploy/.release.local.env
