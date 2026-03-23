@@ -1096,26 +1096,63 @@
         }
 
         // Parse article
+        function mapContractArticle(data) {
+            const cover = (data.media?.covers || [])[0]?.url || '';
+            const images = (data.media?.images || []).map((item) => item.url).filter(Boolean);
+            return {
+                success: true,
+                title: data.title || '',
+                url: data.canonicalUrl || '',
+                content: data.content?.rawText || '',
+                content_html: data.rawPayload?.contentHtml || '',
+                metadata: {
+                    author: data.author?.name || '',
+                    account_name: data.author?.handle || data.author?.name || '',
+                    description: data.summary || '',
+                    publish_date: data.publishedAt || '',
+                    article_id: data.externalId || '',
+                    tags: data.tags || [],
+                },
+                media: {
+                    cover_image: cover,
+                    images,
+                },
+                processing_time: data.rawPayload?.processingTime || 0,
+                extraction_method: data.rawPayload?.extractionMethod || '',
+            };
+        }
+
         async function parseArticle(url) {
             showLoading();
             parseBtn.disabled = true;
             parseBtn.textContent = '解析中...';
 
             try {
-                const response = await fetch('/api/parse', {
+                const response = await fetch('/api/v1/parse', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ url: url }),
+                    body: JSON.stringify({
+                        requestId: `req_${Date.now()}`,
+                        input: {
+                            sourceText: url,
+                            sourceUrl: url,
+                            platformHint: 'weixin_article',
+                        },
+                        options: {
+                            fetchMedia: true,
+                            languageHint: 'zh-CN',
+                        },
+                    }),
                 });
 
-                const data = await response.json();
+                const payload = await response.json();
 
-                if (data.success) {
-                    showArticle(data);
+                if (response.ok && payload.success) {
+                    showArticle(mapContractArticle(payload.data));
                 } else {
-                    showError(data.error ? data.error.message : '解析失败，请检查链接是否正确');
+                    showError(payload.error ? payload.error.message : '解析失败，请检查链接是否正确');
                 }
             } catch (err) {
                 showError('网络错误，请稍后重试');

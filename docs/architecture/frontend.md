@@ -59,7 +59,7 @@ const API_BASE = import.meta.env.VITE_API_URL;
 
 // 统一请求封装
 async function parseArticle(url: string) {
-  const response = await fetch(`${API_BASE}/api/parse`, {
+  const response = await fetch(`${API_BASE}/api/v1/parse`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url })

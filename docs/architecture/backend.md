@@ -47,8 +47,8 @@ backend/
 ### RESTful风格
 
 ```
-POST /api/parse          # 解析文章
-GET  /api/health         # 健康检查
+POST /api/v1/parse          # 解析文章
+GET  /api/v1/health         # 健康检查
 ```
 
 ### 统一响应格式
